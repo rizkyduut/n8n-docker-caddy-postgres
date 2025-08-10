@@ -1,4 +1,4 @@
-version: "3.7"
+version: "3.8"
 
 services:
   caddy:
@@ -7,16 +7,34 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - SUBDOMAIN=${SUBDOMAIN}
+      - DOMAIN_NAME=${DOMAIN_NAME}
     volumes:
       - caddy_data:/data
-      - ${DATA_FOLDER}/caddy_config:/config
-      - ${DATA_FOLDER}/caddy_config/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy_config:/config
+      - ./caddy_config/Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - n8n
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   n8n:
     image: docker.n8n.io/n8nio/n8n
-    restart: always
-    ports:
-      - 5678:5678
+    restart: unless-stopped
     environment:
       - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
       - N8N_PORT=5678
@@ -24,12 +42,30 @@ services:
       - NODE_ENV=production
       - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
+
+      # Security
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_SECURE_COOKIE=true
+    
+      # Database
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_SCHEMA=public
     volumes:
       - n8n_data:/home/node/.n8n
-      - ${DATA_FOLDER}/local_files:/files
+      - ./local_files:/files
+    depends_on:
+      postgres:
+        condition: service_healthy
       
 volumes:
   caddy_data:
     external: true
   n8n_data:
+    external: true
+  postgres_data:
     external: true
