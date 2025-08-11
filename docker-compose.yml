@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   caddy:
     image: caddy:latest
@@ -8,14 +6,19 @@ services:
       - "80:80"
       - "443:443"
     environment:
+      - SSL_EMAIL=${SSL_EMAIL}
       - SUBDOMAIN=${SUBDOMAIN}
       - DOMAIN_NAME=${DOMAIN_NAME}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - caddy_data:/data
       - ./caddy_config:/config
       - ./caddy_config/Caddyfile:/etc/caddy/Caddyfile
     depends_on:
       - n8n
+    networks:
+      - web
 
   postgres:
     image: postgres:16
@@ -31,6 +34,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - web
+  
 
   n8n:
     image: docker.n8n.io/n8nio/n8n
@@ -39,8 +45,10 @@ services:
       - N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
       - N8N_PORT=5678
       - N8N_PROTOCOL=https
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - NODE_ENV=production
-      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      - WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_EDITOR_BASE_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
 
       # Security
@@ -61,6 +69,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      web:
+        aliases:
+          - n8n
       
 volumes:
   caddy_data:
@@ -69,3 +81,6 @@ volumes:
     external: true
   postgres_data:
     external: true
+
+networks:
+  web: {}
